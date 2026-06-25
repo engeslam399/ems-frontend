@@ -1,0 +1,235 @@
+<div class="form-container">
+  <!-- Loading State -->
+  <div class="loader-container" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>Loading employee record...</p>
+  </div>
+
+  <div class="card fade-in" *ngIf="!isLoading">
+    <div class="card-header flex-header">
+      <div>
+        <h2 class="form-title">{{ isEditMode ? 'Edit Employee' : 'Add Employee' }}</h2>
+        <p class="form-subtitle">
+          {{ isEditMode ? 'Modify employee details and attributes' : 'Register a new employee profile' }}
+        </p>
+      </div>
+      <!-- Quick Delete for Edit Mode -->
+      <button 
+        type="button" 
+        *ngIf="isEditMode" 
+        class="btn btn-danger-outline btn-sm" 
+        (click)="onDelete()"
+        title="Delete this employee record"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" width="18" fill="currentColor">
+          <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T760-120H280Zm80-160h80v-320h-80v320Zm160 0h80v-320h-80v320Z"/>
+        </svg>
+        <span>Delete Record</span>
+      </button>
+    </div>
+
+    <form [formGroup]="employeeForm" (ngSubmit)="onSubmit()" novalidate>
+      <!-- General Error Alert -->
+      <div class="alert alert-danger" *ngIf="errorMessage">
+        <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20" fill="currentColor">
+          <path d="M480-280q17 0 28.5-11.5T520-320q0-17-11.5-28.5T480-360q-17 0-28.5 11.5T440-320q0 17 11.5 28.5T480-280Zm-40-160h80v-240h-80v240Zm40 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T209-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q167 0 283.5-116.5T880-480q0-167-116.5-283.5T480-800q-167 0-283.5 116.5T80-480q0 167 116.5 283.5T480-160Zm0-320Z"/>
+        </svg>
+        <span>{{ errorMessage }}</span>
+      </div>
+
+      <!-- IMAGE UPLOAD AND PREVIEW -->
+      <div class="form-group image-upload-group">
+        <label class="form-label">Employee Profile Image</label>
+        
+        <!-- Drag & Drop Zone -->
+        <div 
+          class="image-dropzone" 
+          (dragover)="onDragOver($event)" 
+          (drop)="onDrop($event)"
+          *ngIf="!selectedFile && !hasExistingImage"
+          (click)="fileInput.click()"
+        >
+          <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" height="40" viewBox="0 -960 960 960" width="40" fill="currentColor">
+            <path d="M440-320h80v-166l64 64 56-56-160-160-160 160 56 56 64-64v166ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/>
+          </svg>
+          <p class="dropzone-text">Drag & drop profile image here, or <span>browse files</span></p>
+          <p class="dropzone-subtext">PNG, JPG or JPEG up to 5MB</p>
+          <input 
+            type="file" 
+            #fileInput 
+            id="imageFile" 
+            accept="image/*" 
+            (change)="onFileSelected($event)" 
+            style="display: none;" 
+          />
+        </div>
+
+        <!-- Selected File Preview -->
+        <div class="image-preview-card" *ngIf="imagePreviewUrl">
+          <img [src]="imagePreviewUrl" alt="New Profile Upload" class="preview-thumbnail" />
+          <div class="preview-info">
+            <span class="preview-filename">{{ selectedFile?.name }}</span>
+            <span class="preview-filesize">{{ (selectedFile?.size || 0) / 1024 | number:'1.0-0' }} KB</span>
+            <button type="button" class="btn btn-link-danger btn-sm" (click)="removeSelectedImage()">
+              Remove Upload
+            </button>
+          </div>
+        </div>
+
+        <!-- Existing Server Image (For Edit mode) -->
+        <div class="image-preview-card" *ngIf="hasExistingImage && !imagePreviewUrl">
+          <img [src]="existingImageUrl" alt="Current Profile" class="preview-thumbnail" />
+          <div class="preview-info">
+            <span class="preview-filename font-semibold">Current Profile Photo</span>
+            <button type="button" class="btn btn-link-danger btn-sm" (click)="removeExistingImage()">
+              Delete and Upload New
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TWO COLUMN LAYOUT FOR CODES & NAMES -->
+      <div class="form-row">
+        <!-- Employee Code -->
+        <div class="form-group flex-1">
+          <label for="code" class="form-label">Employee Code <span class="required">*</span></label>
+          <input
+            type="text"
+            id="code"
+            formControlName="code"
+            class="form-control"
+            [class.is-invalid]="employeeForm.get('code')?.touched && employeeForm.get('code')?.invalid"
+            placeholder="e.g. EMP001"
+            autocomplete="off"
+          />
+          <div class="invalid-feedback" *ngIf="employeeForm.get('code')?.touched && employeeForm.get('code')?.invalid">
+            <span *ngIf="employeeForm.get('code')?.hasError('required')">Employee code is required.</span>
+            <span *ngIf="employeeForm.get('code')?.hasError('maxlength')">Code must not exceed 50 characters.</span>
+            <span *ngIf="employeeForm.get('code')?.hasError('duplicateCode')">{{ employeeForm.get('code')?.getError('duplicateCode') }}</span>
+          </div>
+        </div>
+
+        <!-- Employee Name -->
+        <div class="form-group flex-1">
+          <label for="name" class="form-label">Full Name <span class="required">*</span></label>
+          <input
+            type="text"
+            id="name"
+            formControlName="name"
+            class="form-control"
+            [class.is-invalid]="employeeForm.get('name')?.touched && employeeForm.get('name')?.invalid"
+            placeholder="e.g. John Doe"
+          />
+          <div class="invalid-feedback" *ngIf="employeeForm.get('name')?.touched && employeeForm.get('name')?.invalid">
+            <span *ngIf="employeeForm.get('name')?.hasError('required')">Employee name is required.</span>
+            <span *ngIf="employeeForm.get('name')?.hasError('maxlength')">Name must not exceed 100 characters.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TWO COLUMN LAYOUT FOR DOB & DEPT -->
+      <div class="form-row">
+        <!-- Date of Birth -->
+        <div class="form-group flex-1">
+          <label for="dateOfBirth" class="form-label">Date of Birth</label>
+          <input
+            type="date"
+            id="dateOfBirth"
+            formControlName="dateOfBirth"
+            class="form-control"
+            placeholder="YYYY-MM-DD"
+          />
+        </div>
+
+        <!-- Department Dropdown -->
+        <div class="form-group flex-1">
+          <label for="departmentId" class="form-label">Department <span class="required">*</span></label>
+          <div class="select-container">
+            <select
+              id="departmentId"
+              formControlName="departmentId"
+              class="form-control select-control"
+              [class.is-invalid]="employeeForm.get('departmentId')?.touched && employeeForm.get('departmentId')?.invalid"
+            >
+              <option value="" disabled selected>Select a Department</option>
+              <option *ngFor="let dept of departments" [value]="dept.id">
+                {{ dept.name }} ({{ dept.code }})
+              </option>
+            </select>
+          </div>
+          <div class="invalid-feedback" *ngIf="employeeForm.get('departmentId')?.touched && employeeForm.get('departmentId')?.invalid">
+            <span *ngIf="employeeForm.get('departmentId')?.hasError('required')">Department selection is required.</span>
+          </div>
+          <p class="form-input-help" *ngIf="departments.length === 0">
+            No departments found. Please <a routerLink="/departments/new">add a department</a> first.
+          </p>
+        </div>
+      </div>
+
+      <!-- TWO COLUMN LAYOUT FOR MOBILE & SALARY -->
+      <div class="form-row">
+        <!-- Mobile -->
+        <div class="form-group flex-1">
+          <label for="mobile" class="form-label">Mobile Number</label>
+          <input
+            type="tel"
+            id="mobile"
+            formControlName="mobile"
+            class="form-control"
+            [class.is-invalid]="employeeForm.get('mobile')?.touched && employeeForm.get('mobile')?.invalid"
+            placeholder="e.g. +1 555-0199"
+          />
+          <div class="invalid-feedback" *ngIf="employeeForm.get('mobile')?.touched && employeeForm.get('mobile')?.invalid">
+            <span *ngIf="employeeForm.get('mobile')?.hasError('maxlength')">Mobile number must not exceed 20 characters.</span>
+          </div>
+        </div>
+
+        <!-- Salary (Double) -->
+        <div class="form-group flex-1">
+          <label for="salary" class="form-label">Monthly Salary ($) <span class="required">*</span></label>
+          <input
+            type="number"
+            id="salary"
+            formControlName="salary"
+            class="form-control"
+            step="0.01"
+            [class.is-invalid]="employeeForm.get('salary')?.touched && employeeForm.get('salary')?.invalid"
+            placeholder="e.g. 5000.00"
+          />
+          <div class="invalid-feedback" *ngIf="employeeForm.get('salary')?.touched && employeeForm.get('salary')?.invalid">
+            <span *ngIf="employeeForm.get('salary')?.hasError('required')">Salary is required.</span>
+            <span *ngIf="employeeForm.get('salary')?.hasError('min')">Salary must be positive and non-zero.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Address (Full Width) -->
+      <div class="form-group">
+        <label for="address" class="form-label">Residential Address</label>
+        <textarea
+          id="address"
+          formControlName="address"
+          class="form-control"
+          rows="2"
+          [class.is-invalid]="employeeForm.get('address')?.touched && employeeForm.get('address')?.invalid"
+          placeholder="e.g. 123 Pine St, San Francisco, CA"
+        ></textarea>
+        <div class="invalid-feedback" *ngIf="employeeForm.get('address')?.touched && employeeForm.get('address')?.invalid">
+          <span *ngIf="employeeForm.get('address')?.hasError('maxlength')">Address must not exceed 255 characters.</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="form-actions border-top">
+        <a routerLink="/employees" class="btn btn-secondary">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-primary" [disabled]="isSubmitting">
+          <span *ngIf="!isSubmitting">{{ isEditMode ? 'Update Employee' : 'Add Employee' }}</span>
+          <span *ngIf="isSubmitting" class="spinner-inline"></span>
+          <span *ngIf="isSubmitting">Saving...</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
