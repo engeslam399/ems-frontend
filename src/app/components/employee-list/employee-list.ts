@@ -1,7 +1,8 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
 import { RouterModule } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { EmployeeService } from '../../services/employee.service';
 import { DepartmentService } from '../../services/department.service';
@@ -21,6 +22,7 @@ export class EmployeeListComponent implements OnInit {
   private departmentService = inject(DepartmentService);
   private fb = inject(FormBuilder);
   private notificationService = inject(NotificationService);
+  private cdr = inject(ChangeDetectorRef);
 
   employees: EmployeeResponse[] = [];
   departments: Department[] = [];
@@ -46,9 +48,41 @@ export class EmployeeListComponent implements OnInit {
   errorMessage: string | null = null;
 
   ngOnInit() {
-    this.loadDepartments();
-    this.loadEmployees();
+    this.loadDashboardData();
     this.setupFilterListeners();
+  }
+
+  loadDashboardData() {
+    this.isLoading = true;
+    this.errorMessage = null;
+
+    console.debug('[EMS Dashboard] Loading initial dashboard data');
+
+    forkJoin({
+      departments: this.departmentService.listDepartments(),
+      employees: this.employeeService.listEmployees()
+    }).subscribe({
+      next: ({ departments, employees }) => {
+        this.departments = departments;
+        this.totalDepartments = departments.length;
+        this.employees = employees;
+        this.calculateMetrics(employees);
+        this.isLoading = false;
+
+        console.debug('[EMS Dashboard] Initial data loaded', {
+          departments: departments.length,
+          employees: employees.length,
+          averageSalary: this.averageSalary
+        });
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.errorMessage = 'Failed to load dashboard data.';
+        console.error('[EMS Dashboard] Failed to load initial data', err);
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   loadDepartments() {
@@ -56,20 +90,32 @@ export class EmployeeListComponent implements OnInit {
       next: (data) => {
         this.departments = data;
         this.totalDepartments = data.length;
+        console.debug('[EMS Dashboard] Departments loaded', { departments: data.length });
+        this.cdr.markForCheck();
       },
-      error: () => {
+      error: (err) => {
         this.errorMessage = 'Failed to load department filters.';
+        console.error('[EMS Dashboard] Failed to load departments', err);
+        this.cdr.markForCheck();
       }
     });
   }
 
   loadEmployees() {
     this.isLoading = true;
+    this.errorMessage = null;
     const filters = this.filterForm.value;
     
     const deptId = filters.departmentId ? +filters.departmentId : undefined;
     const minSal = filters.minSalary !== '' ? +filters.minSalary : undefined;
     const maxSal = filters.maxSalary !== '' ? +filters.maxSalary : undefined;
+
+    console.debug('[EMS Dashboard] Loading employees', {
+      searchTerm: filters.searchTerm || null,
+      departmentId: deptId ?? null,
+      minSalary: minSal ?? null,
+      maxSalary: maxSal ?? null
+    });
 
     this.employeeService.listEmployees(
       filters.searchTerm,
@@ -81,10 +127,17 @@ export class EmployeeListComponent implements OnInit {
         this.isLoading = false;
         this.employees = data;
         this.calculateMetrics(data);
+        console.debug('[EMS Dashboard] Employees loaded', {
+          employees: data.length,
+          averageSalary: this.averageSalary
+        });
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.isLoading = false;
         this.errorMessage = 'Failed to retrieve employee records.';
+        console.error('[EMS Dashboard] Failed to load employees', err);
+        this.cdr.markForCheck();
       }
     });
   }
@@ -122,6 +175,7 @@ export class EmployeeListComponent implements OnInit {
   }
 
   clearFilters() {
+    console.debug('[EMS Dashboard] Clearing filters');
     this.filterForm.reset({
       searchTerm: '',
       departmentId: '',
@@ -187,12 +241,15 @@ export class EmployeeListComponent implements OnInit {
         this.employeeToDelete = null;
         this.notificationService.showSuccess(`Employee '${name}' deleted successfully.`);
         this.loadEmployees();
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.isLoading = false;
         this.showDeleteModal = false;
         this.employeeToDelete = null;
         this.errorMessage = err.error?.message || 'Failed to delete the employee record.';
+        console.error('[EMS Dashboard] Failed to delete employee', err);
+        this.cdr.markForCheck();
       }
     });
   }
