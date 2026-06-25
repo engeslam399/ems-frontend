@@ -87,10 +87,12 @@
           id="departmentId"
           formControlName="departmentId"
           class="form-control filter-control"
+          [compareWith]="compareDepartmentOption"
+          (change)="onDepartmentChange($event)"
         >
-          <option value="">All Departments</option>
-          <option *ngFor="let dept of departments" [value]="dept.id">
-            {{ dept.name }}
+          <option [ngValue]="null">All Departments</option>
+          <option *ngFor="let dept of departments; trackBy: trackDepartmentById" [ngValue]="dept.id">
+            {{ dept.name }} ({{ dept.code }})
           </option>
         </select>
       </div>

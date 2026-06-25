@@ -61,7 +61,7 @@ export class EmployeeService {
     const formData = new FormData();
     formData.append('code', employee.code);
     formData.append('name', employee.name);
-    
+
     if (employee.dateOfBirth) {
       formData.append('dateOfBirth', employee.dateOfBirth);
     }
@@ -71,7 +71,7 @@ export class EmployeeService {
     if (employee.mobile) {
       formData.append('mobile', employee.mobile);
     }
-    
+
     formData.append('salary', employee.salary.toString());
     formData.append('departmentId', employee.departmentId.toString());
 

@@ -1,14 +1,21 @@
-import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
 import { RouterModule } from '@angular/router';
-import { forkJoin } from 'rxjs';
-import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { Subject, merge, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { EmployeeService } from '../../services/employee.service';
 import { DepartmentService } from '../../services/department.service';
 import { EmployeeResponse } from '../../models/employee.model';
 import { Department } from '../../models/department.model';
 import { NotificationService } from '../../services/notification.service';
+
+interface EmployeeFilters {
+  searchTerm: string | null;
+  departmentId: number | null;
+  minSalary: number | null;
+  maxSalary: number | null;
+}
 
 @Component({
   selector: 'app-employee-list',
@@ -17,7 +24,7 @@ import { NotificationService } from '../../services/notification.service';
   templateUrl: './employee-list.html',
   styleUrl: './employee-list.css'
 })
-export class EmployeeListComponent implements OnInit {
+export class EmployeeListComponent implements OnInit, OnDestroy {
   private employeeService = inject(EmployeeService);
   private departmentService = inject(DepartmentService);
   private fb = inject(FormBuilder);
@@ -30,7 +37,7 @@ export class EmployeeListComponent implements OnInit {
   // Filter form
   filterForm: FormGroup = this.fb.group({
     searchTerm: [''],
-    departmentId: [''],
+    departmentId: [null],
     minSalary: [''],
     maxSalary: ['']
   });
@@ -46,122 +53,140 @@ export class EmployeeListComponent implements OnInit {
   
   isLoading = false;
   errorMessage: string | null = null;
+  private readonly destroy$ = new Subject<void>();
+  private readonly reloadEmployees$ = new Subject<void>();
 
   ngOnInit() {
-    this.loadDashboardData();
-    this.setupFilterListeners();
+    this.loadDepartments();
+    this.setupFilterPipeline();
+    this.reloadEmployees$.next();
   }
 
-  loadDashboardData() {
-    this.isLoading = true;
-    this.errorMessage = null;
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 
-    console.debug('[EMS Dashboard] Loading initial dashboard data');
+  trackDepartmentById(_index: number, dept: Department): number {
+    return dept.id!;
+  }
 
-    forkJoin({
-      departments: this.departmentService.listDepartments(),
-      employees: this.employeeService.listEmployees()
-    }).subscribe({
-      next: ({ departments, employees }) => {
-        this.departments = departments;
-        this.totalDepartments = departments.length;
-        this.employees = employees;
-        this.calculateMetrics(employees);
-        this.isLoading = false;
+  compareDepartmentOption(optionValue: number | null, controlValue: number | null): boolean {
+    if (optionValue == null) {
+      return controlValue == null;
+    }
+    if (controlValue == null) {
+      return false;
+    }
+    return Number(optionValue) === Number(controlValue);
+  }
 
-        console.debug('[EMS Dashboard] Initial data loaded', {
-          departments: departments.length,
-          employees: employees.length,
-          averageSalary: this.averageSalary
-        });
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.isLoading = false;
-        this.errorMessage = 'Failed to load dashboard data.';
-        console.error('[EMS Dashboard] Failed to load initial data', err);
-        this.cdr.markForCheck();
-      }
-    });
+  onDepartmentChange(event: Event) {
+    const selectElement = event.target as HTMLSelectElement;
+    const selectedIndex = selectElement.selectedIndex;
+    const departmentId = selectedIndex <= 0
+      ? null
+      : this.departments[selectedIndex - 1]?.id ?? null;
+
+    this.filterForm.get('departmentId')?.setValue(departmentId, { emitEvent: false });
+    this.reloadEmployees$.next();
   }
 
   loadDepartments() {
     this.departmentService.listDepartments().subscribe({
-      next: (data) => {
-        this.departments = data;
-        this.totalDepartments = data.length;
-        console.debug('[EMS Dashboard] Departments loaded', { departments: data.length });
+      next: (departments) => {
+        this.departments = departments;
+        this.totalDepartments = departments.length;
+        console.debug('[EMS Dashboard] Departments loaded', {
+          departments: departments.length
+        });
         this.cdr.markForCheck();
       },
       error: (err) => {
-        this.errorMessage = 'Failed to load department filters.';
+        this.errorMessage = 'Failed to load dashboard data.';
         console.error('[EMS Dashboard] Failed to load departments', err);
         this.cdr.markForCheck();
       }
     });
   }
 
-  loadEmployees() {
-    this.isLoading = true;
-    this.errorMessage = null;
-    const filters = this.filterForm.value;
-    
-    const deptId = filters.departmentId ? +filters.departmentId : undefined;
-    const minSal = filters.minSalary !== '' ? +filters.minSalary : undefined;
-    const maxSal = filters.maxSalary !== '' ? +filters.maxSalary : undefined;
+  private setupFilterPipeline() {
+    merge(
+      this.filterForm.get('searchTerm')!.valueChanges.pipe(
+        debounceTime(300),
+        distinctUntilChanged()
+      ),
+      this.filterForm.get('minSalary')!.valueChanges.pipe(
+        debounceTime(400),
+        distinctUntilChanged()
+      ),
+      this.filterForm.get('maxSalary')!.valueChanges.pipe(
+        debounceTime(400),
+        distinctUntilChanged()
+      ),
+      this.reloadEmployees$
+    ).pipe(
+      startWith(null),
+      switchMap(() => {
+        const filters = this.getNormalizedFilters();
 
-    console.debug('[EMS Dashboard] Loading employees', {
-      searchTerm: filters.searchTerm || null,
-      departmentId: deptId ?? null,
-      minSalary: minSal ?? null,
-      maxSalary: maxSal ?? null
-    });
+        this.isLoading = true;
+        this.errorMessage = null;
 
-    this.employeeService.listEmployees(
-      filters.searchTerm,
-      deptId,
-      minSal,
-      maxSal
-    ).subscribe({
-      next: (data) => {
-        this.isLoading = false;
-        this.employees = data;
-        this.calculateMetrics(data);
-        console.debug('[EMS Dashboard] Employees loaded', {
-          employees: data.length,
-          averageSalary: this.averageSalary
-        });
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.isLoading = false;
-        this.errorMessage = 'Failed to retrieve employee records.';
-        console.error('[EMS Dashboard] Failed to load employees', err);
-        this.cdr.markForCheck();
+        console.debug('[EMS Dashboard] Loading employees', filters);
+
+        return this.employeeService.listEmployees(
+          filters.searchTerm ?? undefined,
+          filters.departmentId ?? undefined,
+          filters.minSalary ?? undefined,
+          filters.maxSalary ?? undefined
+        ).pipe(
+          map((employees) => ({ employees, filters })),
+          catchError((err) => {
+            console.error('[EMS Dashboard] Failed to load employees', err);
+            this.errorMessage = 'Failed to retrieve employee records.';
+            this.isLoading = false;
+            this.cdr.markForCheck();
+            return of(null);
+          })
+        );
+      }),
+      takeUntil(this.destroy$)
+    ).subscribe((result) => {
+      if (!result) {
+        return;
       }
+
+      this.isLoading = false;
+      this.employees = result.employees;
+      this.calculateMetrics(result.employees);
+      console.debug('[EMS Dashboard] Employees loaded', {
+        employees: result.employees.length,
+        departmentId: result.filters.departmentId,
+        averageSalary: this.averageSalary
+      });
+      this.cdr.markForCheck();
     });
   }
 
-  setupFilterListeners() {
-    // Automatically search on term typing after brief debounce
-    this.filterForm.get('searchTerm')?.valueChanges.pipe(
-      debounceTime(300),
-      distinctUntilChanged()
-    ).subscribe(() => this.loadEmployees());
+  private getNormalizedFilters(): EmployeeFilters {
+    const filters = this.filterForm.getRawValue();
 
-    // Automatically search on department selection
-    this.filterForm.get('departmentId')?.valueChanges.subscribe(() => this.loadEmployees());
+    return {
+      searchTerm: filters.searchTerm?.trim() || null,
+      departmentId: this.toNumberOrNull(filters.departmentId),
+      minSalary: this.toNumberOrNull(filters.minSalary),
+      maxSalary: this.toNumberOrNull(filters.maxSalary)
+    };
+  }
 
-    // Search on salary inputs with debounce
-    this.filterForm.get('minSalary')?.valueChanges.pipe(
-      debounceTime(400),
-      distinctUntilChanged()
-    ).subscribe(() => this.loadEmployees());
+  private toNumberOrNull(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
 
-    this.filterForm.get('maxSalary')?.valueChanges.pipe(
-      debounceTime(400),
-      distinctUntilChanged()
-    ).subscribe(() => this.loadEmployees());
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : null;
   }
 
   calculateMetrics(data: EmployeeResponse[]) {
@@ -178,11 +203,11 @@ export class EmployeeListComponent implements OnInit {
     console.debug('[EMS Dashboard] Clearing filters');
     this.filterForm.reset({
       searchTerm: '',
-      departmentId: '',
+      departmentId: null,
       minSalary: '',
       maxSalary: ''
     }, { emitEvent: false });
-    this.loadEmployees();
+    this.reloadEmployees$.next();
   }
 
   // Employee Profile Image URL
@@ -240,7 +265,7 @@ export class EmployeeListComponent implements OnInit {
         this.showDeleteModal = false;
         this.employeeToDelete = null;
         this.notificationService.showSuccess(`Employee '${name}' deleted successfully.`);
-        this.loadEmployees();
+        this.reloadEmployees$.next();
         this.cdr.markForCheck();
       },
       error: (err) => {
