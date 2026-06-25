@@ -152,6 +152,7 @@ export class EmployeeFormComponent implements OnInit {
     const reader = new FileReader();
     reader.onload = () => {
       this.imagePreviewUrl = reader.result as string;
+      this.cdr.markForCheck();
     };
     reader.readAsDataURL(file);
   }
