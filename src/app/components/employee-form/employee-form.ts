@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -22,6 +22,7 @@ export class EmployeeFormComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private notificationService = inject(NotificationService);
+  private cdr = inject(ChangeDetectorRef);
 
 
   employeeForm: FormGroup = this.fb.group({
@@ -67,9 +68,11 @@ export class EmployeeFormComponent implements OnInit {
     this.departmentService.listDepartments().subscribe({
       next: (data) => {
         this.departments = data;
+        this.cdr.markForCheck();
       },
       error: () => {
         this.errorMessage = 'Failed to load departments. Please reload the page.';
+        this.cdr.markForCheck();
       }
     });
   }
@@ -97,10 +100,12 @@ export class EmployeeFormComponent implements OnInit {
           // Append cache buster to ensure the browser doesn't load a cached image
           this.existingImageUrl = `${this.employeeService.getEmployeeImageUrl(id)}?t=${new Date().getTime()}`;
         }
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.isLoading = false;
         this.errorMessage = err.status === 404 ? 'Employee not found.' : 'Failed to load employee details.';
+        this.cdr.markForCheck();
       }
     });
   }
@@ -203,6 +208,7 @@ export class EmployeeFormComponent implements OnInit {
             : `Employee '${empData.name}' registered successfully.`
         );
         this.router.navigate(['/employees']);
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.isSubmitting = false;
@@ -214,6 +220,7 @@ export class EmployeeFormComponent implements OnInit {
         } else {
           this.errorMessage = err.error?.message || 'An unexpected error occurred. Please try again.';
         }
+        this.cdr.markForCheck();
       }
     });
   }
@@ -228,10 +235,12 @@ export class EmployeeFormComponent implements OnInit {
           this.isLoading = false;
           this.notificationService.showSuccess(`Employee '${this.employeeForm.get('name')?.value}' deleted successfully.`);
           this.router.navigate(['/employees']);
+          this.cdr.markForCheck();
         },
         error: (err) => {
           this.isLoading = false;
           this.errorMessage = err.error?.message || 'Failed to delete employee.';
+          this.cdr.markForCheck();
         }
       });
     }

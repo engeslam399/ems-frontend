@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -18,6 +18,7 @@ export class DepartmentFormComponent {
   private deptService = inject(DepartmentService);
   private router = inject(Router);
   private notificationService = inject(NotificationService);
+  private cdr = inject(ChangeDetectorRef);
 
   deptForm: FormGroup = this.fb.group({
     code: ['', [Validators.required, Validators.maxLength(50)]],
@@ -46,6 +47,7 @@ export class DepartmentFormComponent {
         this.isSubmitting = false;
         this.notificationService.showSuccess(`Department '${deptData.name}' created successfully.`);
         this.router.navigate(['/employees']);
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.isSubmitting = false;
@@ -57,6 +59,7 @@ export class DepartmentFormComponent {
         } else {
           this.errorMessage = err.error?.message || 'An unexpected error occurred. Please try again.';
         }
+        this.cdr.markForCheck();
       }
     });
   }
