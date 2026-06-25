@@ -41,6 +41,11 @@
   padding: 0;
 }
 
+app-root {
+  display: block;
+  min-height: 100vh;
+}
+
 body {
   font-family: var(--font-primary);
   background-color: var(--bg-primary);
@@ -232,6 +237,16 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 1.5rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.dashboard-header {
+  margin-bottom: 2.25rem;
 }
 
 /* --- Typography --- */

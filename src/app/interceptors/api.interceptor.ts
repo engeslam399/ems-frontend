@@ -2,7 +2,7 @@ import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { catchError } from 'rxjs/operators';
 import { throwError } from 'rxjs';
-import { API_URL } from '../app.config';
+import { API_URL } from '../tokens';
 import { NotificationService } from '../services/notification.service';
 
 export const apiInterceptor: HttpInterceptorFn = (req, next) => {
